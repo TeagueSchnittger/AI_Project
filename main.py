@@ -43,12 +43,12 @@ itinerary_route = []
 line_data = []
 current_home = {"lat": u_lat, "lon": u_lon} 
 
-if st.sidebar.button("🧬 Generate 3-City Itinerary"):
+if st.sidebar.button("🧬 Generate Genetic 3-City Itinerary", help="Finds the optimal 3-city trip so you don't have to travel too far between each stop."):
     planner = GeneticPlanner(processed_data, user_coords, agent)
     
-    # Identify the city objects for the top 5 matches
+    # Identify the city objects for the top 10 matches, excluding cities too close to home
     top_names = [res['name'] for res in recommendations[:10]]
-    top_city_objects = [c for c in processed_data if c['name'] in top_names]
+    top_city_objects = [c for c in processed_data if c['name'] in top_names and c['dist'] > 150]
     
     # Run the Evolution
     itinerary_route = planner.evolve(top_city_objects, w_dist, w_temp, w_pop)
@@ -82,7 +82,8 @@ with col1:
     st.table(display_df.head(10))
     
     if itinerary_route:
-        st.markdown("### 🧬 AI-Optimized Itinerary")
+        st.markdown("### 🧬 Genetic Algorithm Itinerary")
+        st.caption("Optimizes for closeness + match score across 50 generations")
         names = [c['name'] for c in itinerary_route]
         st.success(f"**Route:** Home ➔ {names[0]} ➔ {names[1]} ➔ {names[2]} ➔ Home")
 

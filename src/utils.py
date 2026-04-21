@@ -5,7 +5,17 @@ from geopy.distance import geodesic
 # Your coordinates (London)
 #USER_POS = (51.5074, -0.1278)
 
-def add_distances(cities, user_pos): # Add user_pos here
+def add_distances(cities, user_pos):
+    """
+    Adds a 'dist' field (km) to each city based on geodesic distance from the user.
+
+    Parameters:
+        cities (list[dict]): City dictionaries each containing 'lat' and 'lon'.
+        user_pos (tuple[float, float]): User's (latitude, longitude).
+
+    Returns:
+        list[dict]: Same city list with 'dist' (float, km) added to each entry.
+    """
     for city in cities:
         city_pos = (city['lat'], city['lon'])
         # Calculate distance from the provided user_pos
@@ -13,6 +23,16 @@ def add_distances(cities, user_pos): # Add user_pos here
     return cities
 
 def prepare_data(cities, user_pos):
+    """
+    Full pipeline: adds distances then normalizes all city attributes.
+
+    Parameters:
+        cities (list[dict]): Raw city data from cities.json.
+        user_pos (tuple[float, float]): User's (latitude, longitude).
+
+    Returns:
+        list[dict]: Processed city list with 'dist', 'dist_norm', 'temp_norm', 'pop_norm' fields.
+    """
     cities_with_dist = add_distances(cities, user_pos)
     final_data = normalize_cities(cities_with_dist)
     return final_data
@@ -20,9 +40,14 @@ def prepare_data(cities, user_pos):
 
 def normalize_cities(cities):
     """
-    This function creates a balance between the categories population,
-    distance, and weather. A population in the millions would skew the data
-    so this functions balances them. 
+    Min-max normalizes pop, temp, and dist across all cities to a [0, 1] range.
+    Prevents large-magnitude fields (e.g. population in millions) from dominating scores.
+
+    Parameters:
+        cities (list[dict]): City dictionaries each containing 'pop', 'temp', 'dist'.
+
+    Returns:
+        list[dict]: Same list with 'pop_norm', 'temp_norm', 'dist_norm' (float, 0–1) added.
     """
     pops = [c['pop'] for c in cities]
     temps = [c['temp'] for c in cities]
@@ -43,6 +68,17 @@ def normalize_cities(cities):
 
 
 def normalize(value, min_val, max_val):
+    """
+    Min-max normalizes a single value to the range [0, 1].
+
+    Parameters:
+        value (float): The raw value to normalize.
+        min_val (float): Minimum value in the dataset.
+        max_val (float): Maximum value in the dataset.
+
+    Returns:
+        float: Normalized value between 0.0 and 1.0. Returns 0 if min == max.
+    """
     if max_val - min_val == 0:
         return 0
     return (value - min_val) / (max_val - min_val)
@@ -50,7 +86,16 @@ def normalize(value, min_val, max_val):
 
 
 def get_path_distance(route, user_pos):
-    # route is a list of city dictionaries
+    """
+    Calculates total round-trip distance for a route starting and ending at user's home.
+
+    Parameters:
+        route (list[dict]): Ordered list of city dicts each containing 'lat' and 'lon'.
+        user_pos (tuple[float, float]): User's (latitude, longitude).
+
+    Returns:
+        float: Total geodesic distance in km (home → city1 → ... → cityN → home).
+    """
     total = 0
     current_pos = user_pos
     

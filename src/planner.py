@@ -3,11 +3,31 @@ from src.utils import get_path_distance
 
 class GeneticPlanner:
     def __init__(self, cities, user_pos, agent):
+        """
+        Initializes the GeneticPlanner with city data and a scoring agent.
+
+        Parameters:
+            cities (list[dict]): Processed city dictionaries with normalized fields.
+            user_pos (tuple[float, float]): User's (latitude, longitude).
+            agent (TravelAgent): Agent used to score individual cities.
+        """
         self.cities = cities
         self.user_pos = user_pos
         self.agent = agent
 
     def get_fitness(self, route, w_dist, w_temp, w_pop):
+        """
+        Scores a 3-city route by balancing total match utility against travel distance.
+
+        Parameters:
+            route (list[dict]): Ordered list of 3 city dicts.
+            w_dist (float): User's distance preference (0=close, 1=far).
+            w_temp (float): User's temperature preference (0=cold, 1=hot).
+            w_pop (float): User's population preference (0=small, 1=big).
+
+        Returns:
+            float: Fitness score — higher is better. Penalizes long round-trip distances.
+        """
         total_utility = 0
         for city in route:
             total_utility += self.agent.score_city(city, w_dist, w_temp, w_pop)
@@ -17,6 +37,22 @@ class GeneticPlanner:
         return total_utility / (max(dist, 1) / 500)
 
     def evolve(self, top_recommendations, w_dist, w_temp, w_pop, generations=50, pop_size=20):
+        """
+        Runs a genetic algorithm to find the optimal 3-city itinerary.
+        Evolves a population of routes over multiple generations using selection,
+        elitism, and crossover to maximize fitness.
+
+        Parameters:
+            top_recommendations (list[dict]): Candidate cities to build routes from.
+            w_dist (float): User's distance preference (0=close, 1=far).
+            w_temp (float): User's temperature preference (0=cold, 1=hot).
+            w_pop (float): User's population preference (0=small, 1=big).
+            generations (int): Number of evolution cycles. Default 50.
+            pop_size (int): Number of routes per generation. Default 20.
+
+        Returns:
+            list[dict]: Best 3-city route found, as a list of city dicts.
+        """
         # Ensure we are working with at least 5 cities to choose from
         pool = top_recommendations if len(top_recommendations) >= 5 else self.cities[:10]
         
