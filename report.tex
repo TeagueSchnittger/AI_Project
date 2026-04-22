@@ -48,9 +48,9 @@ This report details the design and implementation of an intelligent travel recom
 \section{Introduction}
 
 \subsection{Background}
-Intelligent recommendation systems represent one of the most widely deployed applications of artificial intelligence. Travel recommendation, in particular, involves a multi-dimensional decision space: users must simultaneously consider factors such as geographic proximity, climate preference, and urban scale. Classic approaches to this problem draw from multi-attribute utility theory, in which each alternative (city) is assigned a scalar score derived from the weighted combination of normalized attributes \citep{russell2020}.
+Intelligent recommendation systems represent one of the most widely deployed applications of artificial intelligence. Travel recommendation, in particular, involves a multi-dimensional decision space: users must simultaneously consider factors such as geographic proximity, climate preference, and urban scale. Classic approaches to this problem draw from multi-attribute utility theory, in which each alternative (city) is assigned a scalar score derived from the weighted combination of normalized attributes \citep[ch.~16]{russell2020}.
 
-This project extends single-city recommendation into multi-city itinerary planning, introducing the combinatorial challenge of selecting and ordering a set of destinations such that the total travel burden is minimized while match quality is preserved. This is structurally analogous to a constrained variant of the Travelling Salesperson Problem, making it well-suited to stochastic metaheuristic methods such as Genetic Algorithms \citep{mitchell1998}.
+This project extends single-city recommendation into multi-city itinerary planning, introducing the combinatorial challenge of selecting and ordering a set of destinations such that the total travel burden is minimized while match quality is preserved. This is structurally analogous to a constrained variant of the Travelling Salesperson Problem, making it well-suited to stochastic metaheuristic methods such as Genetic Algorithms \citep[ch.~1]{mitchell1996}.
 
 \subsection{Literature Review}
 The Python data ecosystem underpins the application. The \texttt{pandas} library provides efficient tabular data manipulation for processing city scores and rankings \citep{pandas2024}. Geographic distance calculations between user coordinates and city locations are performed using geodesic methods provided by the \texttt{geopy} library \citep{geopy2024}. The interactive map visualization is rendered using \texttt{pydeck}, a Python wrapper over the WebGL2-powered \texttt{deck.gl} framework \citep{deckgl2024}. The web application interface is built entirely in \texttt{Streamlit} \citep{streamlit2024}, which provides reactive UI components including sliders, number inputs, and buttons that automatically trigger recomputation on change.
@@ -107,7 +107,7 @@ Labels are min-max normalized to $[0, 1]$ and a small amount of Gaussian noise (
 
 \subsubsection{Training Procedure}
 
-The network is trained using the Adam optimizer \citep{kingma2014} with an initial learning rate of $10^{-3}$ and a CosineAnnealingLR scheduler that decays the rate smoothly over 400 epochs. The loss function is mean squared error (MSE). An 80/20 train/test split (9,600 / 2,400 samples) is used, with validation metrics reported every 20 epochs.
+The network is trained using the Adam optimizer \citep[sec.~2]{kingma2014} with an initial learning rate of $10^{-3}$ and a CosineAnnealingLR scheduler that decays the rate smoothly over 400 epochs. The loss function is mean squared error (MSE). An 80/20 train/test split (9,600 / 2,400 samples) is used, with validation metrics reported every 20 epochs.
 
 \subsection{Rule-Based Utility Agent}
 The \texttt{TravelAgent} class in \texttt{src/agent.py} implements the city scoring logic. For each city, a match score is computed using a multiplicative utility function:
