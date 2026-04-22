@@ -84,12 +84,18 @@ col1, col2 = st.columns([1, 1])
 
 with col1:
     st.subheader(f"The Agent Recommends: {best_city_name}")
+
+    if agent.nn_model is None:
+        st.warning("NN model not trained. Run `python -m src.train_scorer` then restart.", icon="⚠️")
+
     df_results = pd.DataFrame(recommendations)
-    
-    # Formatting table for better UX
-    display_df = df_results[['name', 'score']].copy()
+    display_df = df_results[['name', 'score', 'nn_score']].copy()
     display_df['score'] = (display_df['score'] * 100).round(1).astype(str) + '%'
-    display_df.columns = ['City', 'Match Strength']
+    if agent.nn_model is not None:
+        display_df['nn_score'] = (display_df['nn_score'] * 100).round(1).astype(str) + '%'
+    else:
+        display_df['nn_score'] = 'N/A'
+    display_df.columns = ['City', 'Utility Score', 'NN Score']
     st.table(display_df.head(10))
     
     if itinerary_route:

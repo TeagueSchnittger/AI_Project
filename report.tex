@@ -37,7 +37,7 @@ CS38-09, IFSA London}
 \maketitle
 
 \begin{abstract}
-This report details the design and implementation of an intelligent travel recommendation system built as a Streamlit web application. The system combines two distinct artificial intelligence techniques: a rule-based multi-attribute utility agent that scores European cities against user-defined preferences, and a Genetic Algorithm that produces an optimized 3-city itinerary minimizing total travel distance. User preferences for distance, temperature, and population are encoded as normalized weights on a 0--1 scale and evaluated against a static dataset of 25 European cities using a multiplicative utility function. The Genetic Algorithm evolves a population of candidate routes over 50 generations, balancing city match scores against round-trip geodesic distance. Results demonstrate that the utility agent consistently surfaces high-matching cities, while the Genetic Algorithm produces geographically compact itineraries that may differ from the top-ranked individual cities. The system is fully interactive, allowing real-time preference adjustment and on-demand itinerary generation through a browser-based interface.
+This report details the design and implementation of an intelligent travel recommendation system built as a Streamlit web application. The system combines three distinct artificial intelligence techniques: a neural network scorer that learns to predict city match scores from data, a rule-based multi-attribute utility agent that serves as the training signal, and a Genetic Algorithm that produces an optimized 3-city itinerary minimizing total travel distance. User preferences for distance, temperature, and population are encoded as normalized weights on a 0--1 scale and evaluated against a static dataset of 20 European cities. The neural network --- a 4-layer feedforward MLP trained on 12,000 synthetic preference examples --- achieves a test R$^2$ of 0.982 and MSE of 0.00186, demonstrating that preference-based scoring behavior can be learned from data rather than hardcoded as rules. The Genetic Algorithm evolves a population of candidate routes over 50 generations, balancing city match scores against round-trip geodesic distance. Results demonstrate that the neural network scorer closely approximates the utility function while providing an architecture that generalizes to learned user feedback, and the Genetic Algorithm produces geographically compact itineraries that may differ from the top-ranked individual cities. The system is fully interactive, allowing real-time preference adjustment and on-demand itinerary generation through a browser-based interface.
 \end{abstract}
 
 \clearpage
@@ -64,7 +64,7 @@ We hypothesize that the multiplicative utility function will effectively surface
 \section{Methods}
 
 \subsection{Data and Preprocessing}
-The system operates on a static dataset of 25 major European cities stored in \texttt{data/cities.json}. Each city entry contains five fields: \texttt{name}, \texttt{pop} (population), \texttt{temp} (mean annual temperature in °C), \texttt{lat}, and \texttt{lon}.
+The system operates on a static dataset of 20 major European cities stored in \texttt{data/cities.json}. Each city entry contains five fields: \texttt{name}, \texttt{pop} (population), \texttt{temp} (mean annual temperature in °C), \texttt{lat}, and \texttt{lon}.
 
 Upon loading, the \texttt{prepare\_data()} function in \texttt{src/utils.py} performs two operations. First, geodesic distance from the user's coordinates to each city is calculated and appended as a \texttt{dist} field (in km) using \texttt{geopy}. Second, all three numeric attributes — population, temperature, and distance — are min-max normalized to the range $[0, 1]$ across all cities:
 
@@ -73,6 +73,41 @@ Upon loading, the \texttt{prepare\_data()} function in \texttt{src/utils.py} per
 \end{equation}
 
 This normalization ensures that large-magnitude fields (such as population in the millions) do not dominate the scoring function.
+
+\subsection{Neural Network Scorer}
+\label{sec:nn}
+
+Rather than hardcoding preference logic, the core scoring component of the agent is a feedforward neural network that \textit{learns} to predict city match scores from examples. This is the defining property of a learned intelligent agent: behavior that emerges from data rather than explicit programming. In a deployed system, the training labels would come from real user ratings; in this implementation they are generated from the rule-based utility function, which acts as a ``teacher'' providing ground truth.
+
+\subsubsection{Architecture}
+
+The \texttt{ScorerNet} class in \texttt{src/nn\_scorer.py} defines a 4-layer MLP:
+
+\begin{equation}
+    \hat{s} = \sigma\!\left(W_4\,\mathrm{ReLU}\!\left(W_3\,\mathrm{ReLU}\!\left(W_2\,\mathrm{ReLU}(W_1\mathbf{x} + b_1) + b_2\right) + b_3\right) + b_4\right)
+\end{equation}
+
+where the layer widths are $6 \to 64 \to 64 \to 32 \to 1$ and $\sigma$ is the sigmoid activation, constraining the output to $[0, 1]$. The input vector $\mathbf{x} \in \mathbb{R}^6$ concatenates the three normalized city attributes with the three user preference weights:
+
+\begin{equation}
+    \mathbf{x} = [d_{\text{norm}},\; t_{\text{norm}},\; p_{\text{norm}},\; w_d,\; w_t,\; w_p]
+\end{equation}
+
+\subsubsection{Training Data Generation}
+
+Pure random sampling of the 6-dimensional input space concentrates utility scores around 0.3, providing insufficient label variance for effective learning. Instead, training examples are drawn from three structured buckets:
+
+\begin{enumerate}[(1)]
+    \item \textbf{Good match} (4,000 samples): city attributes sampled near user preferences ($\sigma = 0.1$ Gaussian), producing high utility scores.
+    \item \textbf{Bad match} (4,000 samples): city attributes sampled far from preferences ($1 - w + \mathcal{N}(0, 0.08)$), producing low utility scores.
+    \item \textbf{Random} (4,000 samples): unconstrained uniform samples, producing middle-range scores.
+\end{enumerate}
+
+Labels are min-max normalized to $[0, 1]$ and a small amount of Gaussian noise ($\sigma = 0.015$) is added to prevent the network from memorizing the training function exactly.
+
+\subsubsection{Training Procedure}
+
+The network is trained using the Adam optimizer \citep{kingma2014} with an initial learning rate of $10^{-3}$ and a CosineAnnealingLR scheduler that decays the rate smoothly over 400 epochs. The loss function is mean squared error (MSE). An 80/20 train/test split (9,600 / 2,400 samples) is used, with validation metrics reported every 20 epochs.
 
 \subsection{Rule-Based Utility Agent}
 The \texttt{TravelAgent} class in \texttt{src/agent.py} implements the city scoring logic. For each city, a match score is computed using a multiplicative utility function:
@@ -129,6 +164,45 @@ The application is built using \texttt{Streamlit} \citep{streamlit2024}. The sid
 % ==============================================================================
 \section{Results}
 
+\subsection{Neural Network Training Performance}
+
+Training converged smoothly over 400 epochs. Table~\ref{tab:nn_results} summarizes the final evaluation metrics on the held-out test set.
+
+\begin{table}[h]
+\centering
+\caption{Neural Network Scorer — Test Set Results (2,400 samples)}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Metric} & \textbf{Value} & \textbf{Interpretation} \\ \midrule
+Test MSE & 0.00186 & Mean squared prediction error \\
+Test R$^2$ & 0.982   & 98.2\% of score variance explained \\
+Epochs    & 400     & With CosineAnnealingLR decay \\
+Train samples & 9,600 & 80\% of 12,000 generated examples \\
+Test samples  & 2,400 & 20\% held-out split \\ \bottomrule
+\end{tabular}
+\label{tab:nn_results}
+\end{table}
+
+The R$^2$ of 0.982 confirms that the network successfully learned the structure of the preference-matching function from data. The UI displays both the NN score and the utility score side by side for each city, allowing direct comparison of the two approaches.
+
+Figure~\ref{fig:loss} shows the training and validation loss curves over 400 epochs. Both curves decrease smoothly and converge together, indicating the model generalizes well without overfitting.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\textwidth]{nn_loss_curve.png}
+    \caption{Training and validation MSE over 400 epochs. Loss converges smoothly under CosineAnnealingLR decay, with no divergence between train and validation curves.}
+    \label{fig:loss}
+\end{figure}
+
+Figure~\ref{fig:pred} shows the predicted versus actual scores on the held-out test set, alongside the residual distribution. Predictions cluster tightly around the identity line and residuals are centered at zero, confirming accurate learning.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\textwidth]{nn_pred_vs_actual.png}
+    \caption{Left: predicted vs actual scores on the 2,400-sample test set (R$^2$=0.982, MSE=0.00186). Right: residuals are centered at zero with low spread, confirming the network learned the utility function accurately.}
+    \label{fig:pred}
+\end{figure}
+
 \subsection{Utility Agent Performance}
 The utility agent consistently returns a ranked list of 10 cities with match scores expressed as percentages. Figure~\ref{fig:recommendations} shows a representative output with user coordinates set to London (51.5074°N, -0.1278°W) and all three sliders at default mid-point values (0.50).
 
@@ -157,7 +231,8 @@ Figure~\ref{fig:itinerary} shows the Genetic Algorithm output for the same input
 \begin{tabular}{@{}lll@{}}
 \toprule
 \textbf{Component} & \textbf{Technique} & \textbf{Output} \\ \midrule
-\texttt{TravelAgent}    & Multiplicative utility scoring & Ranked city list with match \% \\
+\texttt{ScorerNet}      & 4-layer MLP (learned scorer)   & NN match score per city       \\
+\texttt{TravelAgent}    & Multiplicative utility scoring & Utility score + NN score      \\
 \texttt{GeneticPlanner} & Genetic Algorithm (50 gen.)    & Optimal 3-city itinerary      \\
 \texttt{prepare\_data}  & Min-max normalization          & Normalized city attributes    \\
 \texttt{get\_path\_distance} & Geodesic distance (geopy) & Round-trip km                 \\ \bottomrule
@@ -169,7 +244,9 @@ Figure~\ref{fig:itinerary} shows the Genetic Algorithm output for the same input
 % SECTION 4: DISCUSSION
 % ==============================================================================
 \section{Discussion}
-The results support both hypotheses. The multiplicative utility function successfully penalizes cities that miss on any single preference dimension, producing a sharply differentiated ranking rather than a flat distribution of scores.
+The results support both hypotheses. The neural network scorer achieved R$^2 = 0.982$, demonstrating that a learned agent can successfully acquire preference-matching behavior from examples. The multiplicative utility function successfully penalizes cities that miss on any single preference dimension, producing a sharply differentiated ranking rather than a flat distribution of scores.
+
+The key architectural insight is the separation between the \textit{training signal} (the utility formula) and the \textit{decision-making component} (the neural network). In the current implementation the utility function acts as teacher, but this design makes the system extensible: replacing synthetic labels with real user ratings would allow the agent to learn preferences it was never explicitly programmed to recognize. This is the core property of a learned intelligent agent --- behavior emerges from data rather than from rules a designer anticipated in advance.
 
 The Genetic Algorithm's tendency to select geographically proximate cities — rather than the top three individual scorers — demonstrates that the fitness function is operating as intended. A user traveling from London whose top-scored cities are Lisbon, Athens, and Berlin would face extreme travel distances if all three were included. The Genetic Algorithm correctly identifies that a cluster such as Milan, Rome, and Barcelona yields a superior fitness score by keeping the total round-trip distance manageable.
 
