@@ -18,10 +18,21 @@ u_lon = st.sidebar.number_input("Your Longitude", value=-0.1278, format="%.4f")
 user_coords = (u_lat, u_lon)
 
 st.sidebar.header("Your Preferences")
-st.sidebar.info("0 = Small/Cold/Close | 1 = Big/Hot/Far")
+
 w_dist = st.sidebar.slider("Distance Importance", 0.0, 1.0, 0.5)
-w_temp = st.sidebar.slider("Temperature preference", 0.0, 1.0, 0.5)
-w_pop  = st.sidebar.slider("Population preference", 0.0, 1.0, 0.5)
+_d1, _d2 = st.sidebar.columns(2)
+_d1.caption("← Close")
+_d2.markdown("<p style='text-align:right;font-size:0.8em;color:gray'>Far →</p>", unsafe_allow_html=True)
+
+w_temp = st.sidebar.slider("Temperature Preference", 0.0, 1.0, 0.5)
+_t1, _t2 = st.sidebar.columns(2)
+_t1.caption("← Cold")
+_t2.markdown("<p style='text-align:right;font-size:0.8em;color:gray'>Hot →</p>", unsafe_allow_html=True)
+
+w_pop = st.sidebar.slider("Population Preference", 0.0, 1.0, 0.5)
+_p1, _p2 = st.sidebar.columns(2)
+_p1.caption("← Low Pop")
+_p2.markdown("<p style='text-align:right;font-size:0.8em;color:gray'>High Pop →</p>", unsafe_allow_html=True)
 
 # 2. Process Data
 def load_and_process(coords):

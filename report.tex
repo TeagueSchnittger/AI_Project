@@ -1,0 +1,189 @@
+\documentclass[12pt]{article}
+
+% ── packages ──────────────────────────────────────────────────────────────────
+\usepackage{microtype}
+\usepackage{mathtools}
+\usepackage{amsthm}
+\usepackage{amssymb}
+\usepackage{xspace}
+\usepackage[shortlabels]{enumitem}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{geometry}
+\usepackage{natbib}
+\usepackage{hyperref}
+\usepackage[capitalize,nameinlink,noabbrev]{cleveref}
+\usepackage{fvextra}
+\usepackage[boxed]{algorithm}
+\usepackage[noend]{algpseudocode}
+
+\geometry{margin=1in}
+
+\hypersetup{breaklinks=true,
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=blue,
+    citecolor=blue,
+    urlcolor=blue}
+
+% ── Title Information ─────────────────────────────────────────────────────────
+\title{Individual Project: Intelligent Travel Decision Agent}
+\author{Teague Schnittger \\
+CS38-09, IFSA London}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This report details the design and implementation of an intelligent travel recommendation system built as a Streamlit web application. The system combines two distinct artificial intelligence techniques: a rule-based multi-attribute utility agent that scores European cities against user-defined preferences, and a Genetic Algorithm that produces an optimized 3-city itinerary minimizing total travel distance. User preferences for distance, temperature, and population are encoded as normalized weights on a 0--1 scale and evaluated against a static dataset of 25 European cities using a multiplicative utility function. The Genetic Algorithm evolves a population of candidate routes over 50 generations, balancing city match scores against round-trip geodesic distance. Results demonstrate that the utility agent consistently surfaces high-matching cities, while the Genetic Algorithm produces geographically compact itineraries that may differ from the top-ranked individual cities. The system is fully interactive, allowing real-time preference adjustment and on-demand itinerary generation through a browser-based interface.
+\end{abstract}
+
+\clearpage
+
+% ==============================================================================
+% SECTION 1: INTRODUCTION
+% ==============================================================================
+\section{Introduction}
+
+\subsection{Background}
+Intelligent recommendation systems represent one of the most widely deployed applications of artificial intelligence. Travel recommendation, in particular, involves a multi-dimensional decision space: users must simultaneously consider factors such as geographic proximity, climate preference, and urban scale. Classic approaches to this problem draw from multi-attribute utility theory, in which each alternative (city) is assigned a scalar score derived from the weighted combination of normalized attributes \citep{russell2020}.
+
+This project extends single-city recommendation into multi-city itinerary planning, introducing the combinatorial challenge of selecting and ordering a set of destinations such that the total travel burden is minimized while match quality is preserved. This is structurally analogous to a constrained variant of the Travelling Salesperson Problem, making it well-suited to stochastic metaheuristic methods such as Genetic Algorithms \citep{mitchell1998}.
+
+\subsection{Literature Review}
+The Python data ecosystem underpins the application. The \texttt{pandas} library provides efficient tabular data manipulation for processing city scores and rankings \citep{pandas2024}. Geographic distance calculations between user coordinates and city locations are performed using geodesic methods provided by the \texttt{geopy} library \citep{geopy2024}. The interactive map visualization is rendered using \texttt{pydeck}, a Python wrapper over the WebGL2-powered \texttt{deck.gl} framework \citep{deckgl2024}. The web application interface is built entirely in \texttt{Streamlit} \citep{streamlit2024}, which provides reactive UI components including sliders, number inputs, and buttons that automatically trigger recomputation on change.
+
+\subsection{Hypothesis}
+We hypothesize that the multiplicative utility function will effectively surface cities that closely match all three preference dimensions simultaneously, penalizing cities that score poorly on any single attribute. For the Genetic Algorithm, we hypothesize that the fitness function balancing match score against travel distance will produce itineraries that favor geographically clustered cities rather than simply selecting the three highest-scoring cities, which may be geographically dispersed.
+
+% ==============================================================================
+% SECTION 2: METHODS
+% ==============================================================================
+\section{Methods}
+
+\subsection{Data and Preprocessing}
+The system operates on a static dataset of 25 major European cities stored in \texttt{data/cities.json}. Each city entry contains five fields: \texttt{name}, \texttt{pop} (population), \texttt{temp} (mean annual temperature in °C), \texttt{lat}, and \texttt{lon}.
+
+Upon loading, the \texttt{prepare\_data()} function in \texttt{src/utils.py} performs two operations. First, geodesic distance from the user's coordinates to each city is calculated and appended as a \texttt{dist} field (in km) using \texttt{geopy}. Second, all three numeric attributes — population, temperature, and distance — are min-max normalized to the range $[0, 1]$ across all cities:
+
+\begin{equation}
+    x_{\text{norm}} = \frac{x - x_{\min}}{x_{\max} - x_{\min}}
+\end{equation}
+
+This normalization ensures that large-magnitude fields (such as population in the millions) do not dominate the scoring function.
+
+\subsection{Rule-Based Utility Agent}
+The \texttt{TravelAgent} class in \texttt{src/agent.py} implements the city scoring logic. For each city, a match score is computed using a multiplicative utility function:
+
+\begin{equation}
+    \text{score} = (1 - |d_{\text{norm}} - w_d| + \epsilon)\;
+                   (1 - |t_{\text{norm}} - w_t| + \epsilon)\;
+                   (1 - |p_{\text{norm}} - w_p| + \epsilon)
+\end{equation}
+
+where $d_{\text{norm}}$, $t_{\text{norm}}$, $p_{\text{norm}}$ are the normalized distance, temperature, and population of the city; $w_d$, $w_t$, $w_p$ are the user's slider weights; and $\epsilon = 0.01$ is a small buffer preventing any factor from reducing the score to exactly zero.
+
+The multiplicative formulation makes the agent ``pickier'' than a simple additive model: a city that misses strongly on any single dimension will score poorly overall, even if it excels on the other two. All cities are scored and returned sorted by descending score.
+
+\subsection{Genetic Algorithm Itinerary Planner}
+The \texttt{GeneticPlanner} class in \texttt{src/planner.py} finds an optimal 3-city itinerary from the top 10 recommended cities (excluding any city within 150 km of the user's home to prevent trivial routes).
+
+\subsubsection{Fitness Function}
+Each candidate route is evaluated by a fitness function that balances total city utility against total round-trip travel distance:
+
+\begin{equation}
+    \text{fitness}(R) = \frac{\displaystyle\sum_{c \in R} \text{score}(c)}{\max(\text{distance}(R),\, 1) \;/\; 500}
+\end{equation}
+
+where $\text{distance}(R)$ is the full geodesic round-trip distance in km (home $\to$ city$_1$ $\to$ city$_2$ $\to$ city$_3$ $\to$ home). The divisor of 500 calibrates the distance penalty relative to the utility scores.
+
+\subsubsection{Evolution Procedure}
+The algorithm evolves a population of 20 candidate routes over 50 generations as follows:
+
+\begin{algorithm}[H]
+\caption{Genetic Algorithm Itinerary Planner}
+\begin{algorithmic}[1]
+\State \textbf{Input:} candidate city pool, user weights $w_d, w_t, w_p$
+\State \textbf{Initialize:} population $\leftarrow$ \{top-3 cities\} $\cup$ 19 random 3-city samples
+\For{$g = 1$ \textbf{to} $50$}
+    \State Sort population by fitness (descending)
+    \State Elites $\leftarrow$ top 5 routes (preserved unchanged)
+    \While{$|\text{new population}| < 20$}
+        \State Select parent$_1$, parent$_2$ from top 5
+        \State Child $\leftarrow$ first 2 cities from parent$_1$
+        \State Append first unique city from parent$_2$ not in child
+    \EndWhile
+    \State Population $\leftarrow$ Elites $\cup$ Children
+\EndFor
+\State \textbf{Return:} highest-fitness route
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{User Interface}
+The application is built using \texttt{Streamlit} \citep{streamlit2024}. The sidebar accepts latitude/longitude inputs and three preference sliders. The main panel displays a ranked recommendations table and a \texttt{pydeck} map \citep{deckgl2024} showing the top 5 cities as colored dots (gold for the top match, blue for remaining). Clicking the ``Generate Genetic 3-City Itinerary'' button triggers the Genetic Algorithm and overlays the resulting route as white lines on the map.
+
+% ==============================================================================
+% SECTION 3: RESULTS
+% ==============================================================================
+\section{Results}
+
+\subsection{Utility Agent Performance}
+The utility agent consistently returns a ranked list of 10 cities with match scores expressed as percentages. Figure~\ref{fig:recommendations} shows a representative output with user coordinates set to London (51.5074°N, -0.1278°W) and all three sliders at default mid-point values (0.50).
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\textwidth]{IFSA_AI_PROJECT2.png}
+    \caption{Recommendations table and interactive map. Gold dot marks the top recommended city; blue dots mark remaining top-5 matches; red dot marks the user's location. Map rendered via \texttt{pydeck}/\texttt{deck.gl} \citep{deckgl2024}.}
+    \label{fig:recommendations}
+\end{figure}
+
+The multiplicative scoring function produces a clear gradient of match strength, with the top city typically scoring 10--20 percentage points above the second-ranked city, reflecting the compounding effect of multi-dimensional alignment.
+
+\subsection{Genetic Algorithm Itinerary}
+Figure~\ref{fig:itinerary} shows the Genetic Algorithm output for the same input configuration. The selected 3-city route does not simply mirror the top three utility-ranked cities; instead, it reflects the fitness function's trade-off between match quality and geographic compactness.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\textwidth]{IFSA_AI_PROJECT.png}
+    \caption{Genetic Algorithm itinerary result. White lines trace the optimized round-trip route: Home $\to$ City$_1$ $\to$ City$_2$ $\to$ City$_3$ $\to$ Home. Cities within 150 km of the user are excluded from selection.}
+    \label{fig:itinerary}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\caption{Summary of System Components and Techniques}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Component} & \textbf{Technique} & \textbf{Output} \\ \midrule
+\texttt{TravelAgent}    & Multiplicative utility scoring & Ranked city list with match \% \\
+\texttt{GeneticPlanner} & Genetic Algorithm (50 gen.)    & Optimal 3-city itinerary      \\
+\texttt{prepare\_data}  & Min-max normalization          & Normalized city attributes    \\
+\texttt{get\_path\_distance} & Geodesic distance (geopy) & Round-trip km                 \\ \bottomrule
+\end{tabular}
+\label{tab:components}
+\end{table}
+
+% ==============================================================================
+% SECTION 4: DISCUSSION
+% ==============================================================================
+\section{Discussion}
+The results support both hypotheses. The multiplicative utility function successfully penalizes cities that miss on any single preference dimension, producing a sharply differentiated ranking rather than a flat distribution of scores.
+
+The Genetic Algorithm's tendency to select geographically proximate cities — rather than the top three individual scorers — demonstrates that the fitness function is operating as intended. A user traveling from London whose top-scored cities are Lisbon, Athens, and Berlin would face extreme travel distances if all three were included. The Genetic Algorithm correctly identifies that a cluster such as Milan, Rome, and Barcelona yields a superior fitness score by keeping the total round-trip distance manageable.
+
+One limitation of the current implementation is that the crossover operator is minimal: children inherit two cities from one parent and one from another, with no order-based recombination. This limits the algorithm's ability to optimize the \textit{ordering} of cities within a route (not just their selection), since route order directly affects total distance. A future improvement would implement Order Crossover (OX1) to preserve contiguous sub-sequences of high-quality routes across generations.
+
+A second limitation is the static city dataset. Expanding to a live data source with real-time pricing, seasonal temperature, and user ratings would significantly improve the practical utility of the recommendations.
+
+% ==============================================================================
+% REFERENCES & DECLARATIONS
+% ==============================================================================
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\section*{AI Declaration}
+In accordance with project guidelines, it is disclosed that Claude Code (Anthropic, model: \texttt{claude-sonnet-4-6}) was used as an AI coding assistant during the development of this project. Its use included code generation, debugging, docstring authoring, and LaTeX formatting of this report. All system design decisions, algorithm selection, preference modeling logic, and analytical interpretation were conducted independently by the author.
+
+\end{document}
