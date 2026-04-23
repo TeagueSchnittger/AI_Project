@@ -8,7 +8,7 @@
 
 ---
 
-![App Screenshot](IFSA_AI_PROJECT.png)
+![App Screenshot](data/IFSA_AI_PROJECT.png)
 
 ## Overview
 
@@ -116,11 +116,11 @@ AI_Project/
 
 **Figure 1.** Ranked recommendations table and interactive map showing top 5 cities. The gold dot marks the top recommended city; blue dots mark remaining top matches; red dot marks the user's location.
 
-![Figure 1](IFSA_AI_PROJECT2.png)
+![Figure 1](data/IFSA_AI_PROJECT2.png)
 
 **Figure 2.** Genetic Algorithm itinerary result showing the optimized 3-city route. White lines trace the full round-trip path from home through each city and back.
 
-![Figure 2](IFSA_AI_PROJECT.png)
+![Figure 2](data/IFSA_AI_PROJECT.png)
 
 ---
 
